@@ -8,6 +8,8 @@ export interface VideoInfo {
   duration_s: number;
   size_bytes: number;
   audio_codec: string | null;
+  video_codec: string | null;
+  hdr: boolean;
 }
 
 export interface Resolution {
@@ -27,10 +29,20 @@ export interface ConvertResult {
   output_size: number;
 }
 
-export const probeVideo = (path: string) => invoke<ProbeResult>("probe_video", { path });
-export const convertVideo = (path: string, height: number) =>
-  invoke<ConvertResult>("convert_video", { path, height });
-export const cancelConversion = () => invoke<void>("cancel_conversion");
+export interface JobProgress {
+  job_id: string;
+  percent: number;
+  speed: number | null;
+  eta_s: number | null;
+  finalizing: boolean;
+}
 
-export const onProgress = (cb: (percent: number) => void) =>
-  listen<{ percent: number }>("convert://progress", (e) => cb(e.payload.percent));
+export const probeVideo = (path: string) => invoke<ProbeResult>("probe_video", { path });
+export const convertVideo = (jobId: string, path: string, height: number, hwaccel: boolean) =>
+  invoke<ConvertResult>("convert_video", { jobId, path, height, hwaccel });
+export const cancelConversion = (jobId: string) => invoke<void>("cancel_conversion", { jobId });
+export const cancelAll = () => invoke<void>("cancel_all");
+export const recommendedParallelism = () => invoke<number>("recommended_parallelism");
+
+export const onProgress = (cb: (p: JobProgress) => void) =>
+  listen<JobProgress>("convert://progress", (e) => cb(e.payload));

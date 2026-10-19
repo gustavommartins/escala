@@ -1,0 +1,60 @@
+name: release
+
+# Dispara ao enviar tag de versão (ex.: v0.1.2)
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: lts/*
+          cache: npm
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Conferir tag, versão e chave do updater
+        shell: bash
+        run: |
+          test "${GITHUB_REF_NAME#v}" = "$(node -p "require('./package.json').version")" || { echo "Tag diferente da versão do package.json"; exit 1; }
+          ! grep -q REPLACE_WITH_PUBLIC_KEY src-tauri/tauri.conf.json || { echo "pubkey do updater ainda é o placeholder"; exit 1; }
+
+      - name: Testes do front-end
+        run: npm test
+
+      # ffmpeg não está no git; baixa para src-tauri/binaries
+      - name: Baixar ffmpeg
+        run: npm run fetch-ffmpeg
+
+      - name: Testes Rust
+        run: cargo test
+        working-directory: src-tauri
+
+      - name: Build e publicação
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: 'Escala ${{ github.ref_name }}'
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true

@@ -35,6 +35,20 @@ pub struct VideoInfo {
     pub video_index: u32,
     /// Vídeo HDR (PQ/HLG): precisa de tone-mapping para sair correto em 8 bits.
     pub hdr: bool,
+    /// Codec do stream de vídeo principal (ex.: "hevc"); decide se vale usar decodificação por hardware.
+    pub video_codec: Option<String>,
+}
+
+/// Opções de execução que não alteram a qualidade da saída.
+#[derive(Debug, Clone, Copy, Default)]
+pub struct EncodeOpts {
+    /// Decodificação por hardware (D3D11VA). Só acelera a leitura; o encode continua x264.
+    pub hwaccel: bool,
+}
+
+/// Codecs que o D3D11VA decodifica de forma confiável.
+fn hwaccel_supported(codec: Option<&str>) -> bool {
+    matches!(codec, Some("h264") | Some("hevc") | Some("av1") | Some("vp9"))
 }
 
 #[derive(Debug, Clone, Serialize, PartialEq)]
@@ -67,7 +81,13 @@ pub fn available_resolutions(info: &VideoInfo) -> Vec<Resolution> {
 }
 
 /// Argumentos do ffmpeg. `target` é o lado menor desejado.
-pub fn build_ffmpeg_args(input: &Path, output: &Path, target: u32, info: &VideoInfo) -> Vec<String> {
+pub fn build_ffmpeg_args(
+    input: &Path,
+    output: &Path,
+    target: u32,
+    info: &VideoInfo,
+    opts: EncodeOpts,
+) -> Vec<String> {
     // Mantém proporção; -2 garante dimensão par (exigência do H.264).
     let scale = if info.width >= info.height {
         format!("scale=-2:{target}:flags=lanczos")
@@ -84,12 +104,12 @@ pub fn build_ffmpeg_args(input: &Path, output: &Path, target: u32, info: &VideoI
     };
     let video_map = format!("0:v:{}", info.video_index);
 
-    let mut args: Vec<String> = [
-        "-hide_banner", "-nostdin", "-y", "-i",
-    ]
-    .iter()
-    .map(|s| s.to_string())
-    .collect();
+    let mut args: Vec<String> = ["-hide_banner", "-nostdin", "-y"].map(String::from).to_vec();
+    // Opções de entrada (como -hwaccel) precisam vir antes do -i.
+    if opts.hwaccel && hwaccel_supported(info.video_codec.as_deref()) {
+        args.extend(["-hwaccel", "d3d11va"].map(String::from));
+    }
+    args.push("-i".into());
     args.push(input.to_string_lossy().into_owned());
 
     args.extend(
@@ -121,12 +141,8 @@ fn audio_is_copyable(codec: Option<&str>) -> bool {
     matches!(codec, Some("aac") | Some("mp3"))
 }
 
-/// `pasta/video.mov` + 1080 → `pasta/video_1080p.mp4` (ou `video_1080p (2).mp4` se já existir).
-pub fn output_path(input: &Path, target: u32) -> PathBuf {
-    output_path_with(input, target, |p| p.exists())
-}
-
-fn output_path_with(input: &Path, target: u32, exists: impl Fn(&Path) -> bool) -> PathBuf {
+/// `pasta/video.mov` + 1080 → `pasta/video_1080p.mp4` (ou `video_1080p (2).mp4` se `exists` disser que já existe).
+pub(crate) fn output_path_with(input: &Path, target: u32, exists: impl Fn(&Path) -> bool) -> PathBuf {
     let dir = input.parent().unwrap_or_else(|| Path::new("."));
     let stem = input
         .file_stem()
@@ -142,21 +158,58 @@ fn output_path_with(input: &Path, target: u32, exists: impl Fn(&Path) -> bool) -
     candidate
 }
 
-/// Interpreta uma linha do `-progress`: devolve 0.0–1.0 ou `None`.
-pub fn parse_progress(line: &str, duration_s: f64) -> Option<f64> {
-    let line = line.trim();
-    if line == "progress=end" {
-        return Some(1.0);
+/// Estado de progresso enviado ao front-end.
+#[derive(Debug, Clone, Serialize, PartialEq)]
+pub struct ProgressUpdate {
+    /// 0.0–100.0
+    pub percent: f64,
+    /// Velocidade relativa ao tempo real (ex.: 1.85 = 1,85×).
+    pub speed: Option<f64>,
+    /// Segundos restantes estimados.
+    pub eta_s: Option<f64>,
+    /// O ffmpeg terminou de codificar e está fechando o arquivo (+faststart).
+    pub finalizing: bool,
+}
+
+/// Acumula as linhas do `-progress` (`chave=valor`, um bloco por atualização).
+pub struct ProgressTracker {
+    duration_s: f64,
+    out_time_s: Option<f64>,
+    speed: Option<f64>,
+}
+
+impl ProgressTracker {
+    pub fn new(duration_s: f64) -> Self {
+        Self { duration_s, out_time_s: None, speed: None }
     }
-    // out_time_us e out_time_ms são ambos em microssegundos no ffmpeg.
-    let value = line
-        .strip_prefix("out_time_us=")
-        .or_else(|| line.strip_prefix("out_time_ms="))?;
-    let micros: f64 = value.parse().ok()?; // "N/A" cai aqui
-    if duration_s <= 0.0 {
-        return None;
+
+    /// Alimenta uma linha; devolve uma atualização quando o bloco fecha (`progress=...`).
+    pub fn feed(&mut self, line: &str) -> Option<ProgressUpdate> {
+        let line = line.trim();
+        if line == "progress=end" {
+            return Some(ProgressUpdate { percent: 100.0, speed: None, eta_s: Some(0.0), finalizing: true });
+        }
+        if line == "progress=continue" {
+            return self.snapshot();
+        }
+        // out_time_us e out_time_ms são ambos em microssegundos no ffmpeg.
+        if let Some(v) = line.strip_prefix("out_time_us=").or_else(|| line.strip_prefix("out_time_ms=")) {
+            self.out_time_s = v.parse::<f64>().ok().map(|us| us / 1_000_000.0); // "N/A" cai aqui
+        } else if let Some(v) = line.strip_prefix("speed=") {
+            self.speed = v.trim().trim_end_matches('x').trim().parse().ok().filter(|s: &f64| *s > 0.0);
+        }
+        None
     }
-    Some((micros / 1_000_000.0 / duration_s).clamp(0.0, 1.0))
+
+    fn snapshot(&self) -> Option<ProgressUpdate> {
+        if self.duration_s <= 0.0 {
+            return None;
+        }
+        let t = self.out_time_s?.max(0.0);
+        let percent = (t / self.duration_s).clamp(0.0, 1.0) * 100.0;
+        let eta_s = self.speed.map(|s| ((self.duration_s - t) / s).max(0.0));
+        Some(ProgressUpdate { percent, speed: self.speed, eta_s, finalizing: false })
+    }
 }
 
 #[derive(Deserialize)]
@@ -250,7 +303,9 @@ pub fn parse_ffprobe_json(json: &str) -> Result<VideoInfo, String> {
         .filter(|s| s.codec_type.as_deref() == Some("video") && s.index.unwrap_or(0) < video_index)
         .count() as u32;
 
-    Ok(VideoInfo { width, height, duration_s, size_bytes, audio_codec, video_index, hdr })
+    let video_codec = video.codec_name.clone();
+
+    Ok(VideoInfo { width, height, duration_s, size_bytes, audio_codec, video_index, hdr, video_codec })
 }
 
 #[cfg(test)]
@@ -266,6 +321,7 @@ mod tests {
             audio_codec: audio.map(String::from),
             video_index: 0,
             hdr: false,
+            video_codec: Some("hevc".into()),
         }
     }
 
@@ -300,7 +356,7 @@ mod tests {
 
     #[test]
     fn args_have_quality_settings_and_copy_audio() {
-        let a = build_ffmpeg_args(Path::new("in.mov"), Path::new("out.mp4"), 1080, &info(3840, 2160, Some("aac")));
+        let a = build_ffmpeg_args(Path::new("in.mov"), Path::new("out.mp4"), 1080, &info(3840, 2160, Some("aac")), EncodeOpts::default());
         let joined = a.join(" ");
         assert!(joined.contains("-crf 18"));
         assert!(joined.contains("scale=-2:1080:flags=lanczos"));
@@ -311,13 +367,13 @@ mod tests {
 
     #[test]
     fn args_reencode_unsupported_audio() {
-        let a = build_ffmpeg_args(Path::new("in.mkv"), Path::new("out.mp4"), 720, &info(1920, 1080, Some("opus")));
+        let a = build_ffmpeg_args(Path::new("in.mkv"), Path::new("out.mp4"), 720, &info(1920, 1080, Some("opus")), EncodeOpts::default());
         assert!(a.join(" ").contains("-c:a aac -b:a 192k"));
     }
 
     #[test]
     fn args_scale_vertical_by_width() {
-        let a = build_ffmpeg_args(Path::new("in.mp4"), Path::new("out.mp4"), 1080, &info(2160, 3840, None));
+        let a = build_ffmpeg_args(Path::new("in.mp4"), Path::new("out.mp4"), 1080, &info(2160, 3840, None), EncodeOpts::default());
         assert!(a.join(" ").contains("scale=1080:-2:flags=lanczos"));
     }
 
@@ -335,13 +391,54 @@ mod tests {
     }
 
     #[test]
-    fn progress_parsing() {
-        assert_eq!(parse_progress("out_time_us=5000000", 10.0), Some(0.5));
-        assert_eq!(parse_progress("out_time_us=N/A", 10.0), None);
-        assert_eq!(parse_progress("out_time_us=99000000", 10.0), Some(1.0));
-        assert_eq!(parse_progress("progress=end", 10.0), Some(1.0));
-        assert_eq!(parse_progress("frame=10", 10.0), None);
-        assert_eq!(parse_progress("out_time_us=1000", 0.0), None);
+    fn progress_tracker_reports_percent_speed_eta() {
+        let mut t = ProgressTracker::new(10.0);
+        assert_eq!(t.feed("out_time_us=5000000"), None);
+        assert_eq!(t.feed("speed=2.0x"), None);
+        let u = t.feed("progress=continue").unwrap();
+        assert_eq!(u.percent, 50.0);
+        assert_eq!(u.speed, Some(2.0));
+        assert_eq!(u.eta_s, Some(2.5));
+        assert!(!u.finalizing);
+    }
+
+    #[test]
+    fn progress_tracker_handles_na_and_end() {
+        let mut t = ProgressTracker::new(10.0);
+        t.feed("out_time_us=N/A");
+        t.feed("speed=N/A");
+        assert_eq!(t.feed("progress=continue"), None);
+        let end = t.feed("progress=end").unwrap();
+        assert!(end.finalizing);
+        assert_eq!(end.percent, 100.0);
+        assert_eq!(ProgressTracker::new(0.0).feed("progress=continue"), None);
+    }
+
+    #[test]
+    fn progress_tracker_clamps_past_duration() {
+        let mut t = ProgressTracker::new(10.0);
+        t.feed("out_time_us=99000000");
+        assert_eq!(t.feed("progress=continue").unwrap().percent, 100.0);
+    }
+
+    #[test]
+    fn hwaccel_goes_before_input_and_only_for_supported_codecs() {
+        let on = EncodeOpts { hwaccel: true };
+        let a = build_ffmpeg_args(Path::new("in.mp4"), Path::new("o.mp4"), 720, &info(1920, 1080, None), on);
+        let hw = a.iter().position(|x| x == "-hwaccel").unwrap();
+        assert!(hw < a.iter().position(|x| x == "-i").unwrap());
+        let mut other = info(1920, 1080, None);
+        other.video_codec = Some("mpeg4".into());
+        let b = build_ffmpeg_args(Path::new("in.mp4"), Path::new("o.mp4"), 720, &other, on);
+        assert!(!b.contains(&"-hwaccel".to_string()));
+        let c = build_ffmpeg_args(Path::new("in.mp4"), Path::new("o.mp4"), 720, &info(1920, 1080, None), EncodeOpts::default());
+        assert!(!c.contains(&"-hwaccel".to_string()));
+    }
+
+    #[test]
+    fn output_path_respects_reserved() {
+        let p = output_path_with(Path::new("/v/a.mov"), 720, |c| c == Path::new("/v/a_720p.mp4"));
+        assert_eq!(p, PathBuf::from("/v/a_720p (2).mp4"));
     }
 
     #[test]
@@ -359,6 +456,7 @@ mod tests {
             audio_codec: Some("aac".into()),
             video_index: 0,
             hdr: false,
+            video_codec: Some("hevc".into()),
         });
     }
 
@@ -388,7 +486,7 @@ mod tests {
         assert_eq!((i.width, i.video_index), (3840, 1));
         let mut hdr = i.clone();
         hdr.video_index = 1;
-        let a = build_ffmpeg_args(Path::new("a.mkv"), Path::new("o.mp4"), 1080, &hdr).join(" ");
+        let a = build_ffmpeg_args(Path::new("a.mkv"), Path::new("o.mp4"), 1080, &hdr, EncodeOpts::default()).join(" ");
         assert!(a.contains("-map 0:v:1") && a.contains("tonemap=hable"));
     }
 

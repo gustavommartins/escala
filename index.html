@@ -22,45 +22,32 @@
         <p id="drop-error" class="error" hidden></p>
       </section>
 
-      <!-- 2. Choose resolution -->
-      <section id="view-options" class="view" hidden>
-        <div class="card file-card">
-          <div class="file-name" id="file-name"></div>
-          <div class="secondary" id="file-meta"></div>
+      <!-- 2. Fila -->
+      <section id="view-queue" class="view" hidden>
+        <div class="queue-head">
+          <h2 data-i18n="options.convertTo"></h2>
+          <div id="global-options" class="chips" role="radiogroup"></div>
         </div>
-        <h2 data-i18n="options.convertTo"></h2>
-        <div id="options" class="options" role="radiogroup"></div>
-        <p class="secondary hint" data-i18n="options.hint"></p>
+        <div id="queue-list" class="queue-list"></div>
+        <p id="queue-error" class="error" hidden></p>
+        <div id="overall" class="overall" hidden>
+          <div class="overall-row"><span class="secondary" data-i18n="queue.overall"></span><span id="overall-percent" class="secondary"></span></div>
+          <div class="progress"><div id="overall-bar" class="progress-bar"></div></div>
+        </div>
+        <p id="queue-summary" class="secondary summary" hidden></p>
         <div class="actions">
-          <button id="btn-back" class="btn btn-secondary" data-i18n="common.back"></button>
-          <button id="btn-convert" class="btn btn-primary" data-i18n="common.convert" disabled></button>
-        </div>
-      </section>
-
-      <!-- 3. Converting -->
-      <section id="view-progress" class="view" hidden>
-        <h1 data-i18n="progress.title"></h1>
-        <p class="secondary" id="progress-name"></p>
-        <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100">
-          <div id="progress-bar" class="progress-bar"></div>
-        </div>
-        <p id="progress-percent" class="percent">0%</p>
-        <div class="actions">
-          <button id="btn-cancel" class="btn btn-secondary" data-i18n="common.cancel"></button>
-        </div>
-      </section>
-
-      <!-- 4. Done -->
-      <section id="view-done" class="view" hidden>
-        <div class="dropzone-icon" aria-hidden="true">✅</div>
-        <h1 data-i18n="done.title"></h1>
-        <p class="secondary" id="done-info"></p>
-        <div class="actions">
-          <button id="btn-another" class="btn btn-secondary" data-i18n="done.another"></button>
-          <button id="btn-reveal" class="btn btn-primary" data-i18n="done.reveal"></button>
+          <button id="btn-add" class="btn btn-secondary" data-i18n="queue.add"></button>
+          <button id="btn-convert-all" class="btn btn-primary" data-i18n="queue.convertAll" disabled></button>
+          <button id="btn-cancel-all" class="btn btn-secondary" data-i18n="queue.cancelAll" hidden></button>
         </div>
       </section>
     </main>
+
+    <footer id="app-footer">
+      <span id="footer-version" class="secondary"></span>
+      <span id="update-status" class="secondary" hidden></span>
+      <button id="btn-update" class="link-btn" hidden></button>
+    </footer>
 
     <!-- Settings -->
     <div id="settings" class="sheet-backdrop" hidden>
@@ -69,6 +56,14 @@
         <label class="field">
           <span data-i18n="settings.language"></span>
           <select id="lang-select"></select>
+        </label>
+        <label class="field">
+          <span data-i18n="settings.parallel"></span>
+          <select id="parallel-select"></select>
+        </label>
+        <label class="check">
+          <input type="checkbox" id="hwaccel-check" />
+          <span data-i18n="settings.hwaccel"></span>
         </label>
         <div class="actions">
           <button id="btn-settings-close" class="btn btn-primary" data-i18n="settings.close"></button>
