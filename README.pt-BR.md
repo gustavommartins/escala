@@ -49,7 +49,7 @@ cd src-tauri && cargo test   # testes da lógica de conversão
 - Áudio: copiado sem recompressão quando for AAC/MP3; senão AAC 192 kbps.
 - Saída: MP4 com `faststart`, compatível com praticamente qualquer player.
 
-## Licença do FFmpeg
+## Licença
 
-O app usa o build GPL do FFmpeg (necessário para o encoder x264), baixado de
-[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds). Se distribuir o app, respeite a licença GPL.
+O Escala é distribuído sob a [Licença MIT](LICENSE). Os instaladores incluem o build GPL do FFmpeg (necessário para o encoder x264), baixado de
+[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds); veja [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) para a licença e o código-fonte.

@@ -49,7 +49,7 @@ cd src-tauri && cargo test   # tests for the conversion logic
 - Audio: copied as-is when it is AAC/MP3; otherwise AAC 192 kbps.
 - Output: MP4 with `faststart`, playable almost anywhere.
 
-## FFmpeg license
+## License
 
-The app uses the GPL build of FFmpeg (required for the x264 encoder), downloaded from
-[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds). If you distribute the app, comply with the GPL.
+Escala is released under the [MIT License](LICENSE). The installers bundle the GPL build of FFmpeg (needed for the x264 encoder), downloaded from
+[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds); see [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) for its license and source code.
