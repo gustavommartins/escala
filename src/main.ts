@@ -36,7 +36,7 @@ import {
   summary,
   type QueueItem,
 } from "./queue";
-import { initFooter, notifyIdle, renderFooter } from "./updater";
+import { initFooter, renderFooter } from "./footer";
 
 const PROBE_CONCURRENCY = 4;
 const THUMB_CONCURRENCY = 2;
@@ -682,7 +682,6 @@ function renderAll() {
   sum.hidden = active || doneCount === 0;
   if (!sum.hidden) sum.textContent = t("queue.summary", { count: doneCount, saved: formatSize(Math.max(0, savedBytes)) });
 
-  if (!active) notifyIdle();
 }
 
 // ---------- Configurações ----------
@@ -774,7 +773,7 @@ async function init() {
   $("btn-cancel-all").addEventListener("click", () => void onCancelAll());
   $("btn-clear").addEventListener("click", clearFinished);
 
-  void initFooter(() => hasActive(items));
+  void initFooter();
   await onProgress(onJobProgress);
 
   const zone = $("dropzone");

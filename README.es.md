@@ -19,8 +19,6 @@ Hecho con **Rust + Tauri 2** y **FFmpeg** integrado.
 
 **Decodificación por hardware** (⚙︎ → **Decodificación de video por hardware**, desactivada por defecto): usa la GPU solo para leer el archivo de entrada, lo que puede acelerar videos en 4K. La salida es idéntica, porque la codificación sigue usando x264 con CRF 18. Aplica a entradas H.264, HEVC, AV1 y VP9; si el controlador falla, la app vuelve sola a la decodificación por software.
 
-**Actualizaciones:** Escala busca una nueva versión al abrirse y descarga la actualización en segundo plano. Cuando está lista, aparece un botón **Reiniciar** en el pie de página. La app nunca se reinicia en medio de una conversión: si haces clic mientras hay videos convirtiéndose, espera a que la cola se vacíe. La versión actual aparece en el pie de página.
-
 **Idioma:** la app sigue el idioma del sistema (English, Português o Español; inglés en los demás casos).
 Puedes cambiarlo en cualquier momento con el botón ⚙︎ de la esquina superior derecha.
 
@@ -47,7 +45,7 @@ cd src-tauri && cargo test   # pruebas de la lógica de conversión
 | Calidad (CRF), velocidad (preset), audio, lista de resoluciones | `src-tauri/src/video.rs` (constantes al inicio) |
 | Comandos que llama el front end (analizar, convertir, cancelar) | `src-tauri/src/commands.rs` |
 | Reglas de la cola (videos omitidos, resolución por video) | `src/queue.ts` |
-| Actualización automática y pie de página | `src/updater.ts` (endpoint y clave de firma en `src-tauri/tauri.conf.json`) |
+| Pie de página con la versión de la app | `src/footer.ts` |
 | Pantallas y flujo | `index.html`, `src/main.ts` |
 | Traducciones (agrega un idioma aquí) | `src/i18n.ts` |
 | Aspecto (colores, espaciados, modo oscuro) | `src/styles.css` |
@@ -58,27 +56,12 @@ cd src-tauri && cargo test   # pruebas de la lógica de conversión
 - Audio: se copia sin recomprimir si es AAC/MP3; si no, AAC 192 kbps.
 - Salida: MP4 con `faststart`, compatible con casi cualquier reproductor.
 
-## Publicar una versión (mantenedores)
+## Generar el instalador (mantenedores)
 
-Configuración única:
-
-1. Genera el par de claves de firma (elige una contraseña cuando se pida y guárdala bien):
-   ```bash
-   npx tauri signer generate -w ~/.tauri/escala.key
-   ```
-2. Copia la **clave pública** en `plugins.updater.pubkey` de `src-tauri/tauri.conf.json`, reemplazando `REPLACE_WITH_PUBLIC_KEY`. Sin ella, la app no puede verificar las actualizaciones.
-3. En el repositorio de GitHub, ve a **Settings → Secrets and variables → Actions** y crea:
-   - `TAURI_SIGNING_PRIVATE_KEY`: contenido del archivo de la clave privada (`~/.tauri/escala.key`).
-   - `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`: la contraseña que elegiste.
-
-En cada release:
-
-1. Sube el `version` en `package.json` (y en `src-tauri/Cargo.toml`, para que ambos coincidan). La app muestra esa versión y el updater la compara con la publicada.
-2. Haz commit, y luego crea y sube la etiqueta:
-   ```bash
-   git tag vX.Y.Z && git push origin vX.Y.Z
-   ```
-3. El workflow **release** (`.github/workflows/release.yml`) ejecuta las pruebas de Rust, compila, firma y publica el instalador y el `latest.json` como GitHub Release. Las copias instaladas reciben la actualización al abrirse la próxima vez.
+1. Sube el `version` en `package.json` y en `src-tauri/Cargo.toml` (deben ser iguales).
+2. Ejecuta `npm install` y `npm run fetch-ffmpeg`.
+3. Ejecuta `npm run tauri build`. El instalador NSIS se genera en `src-tauri/target/release/bundle/nsis/`.
+4. Publica el archivo manualmente en la página de [Releases](../../releases) de GitHub.
 
 ### Benchmark
 
