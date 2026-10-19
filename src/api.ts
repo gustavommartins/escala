@@ -38,6 +38,7 @@ export interface JobProgress {
 }
 
 export const probeVideo = (path: string) => invoke<ProbeResult>("probe_video", { path });
+export const thumbnail = (path: string, info: VideoInfo) => invoke<string>("thumbnail", { path, info });
 export const convertVideo = (jobId: string, path: string, height: number, hwaccel: boolean) =>
   invoke<ConvertResult>("convert_video", { jobId, path, height, hwaccel });
 export const cancelConversion = (jobId: string) => invoke<void>("cancel_conversion", { jobId });

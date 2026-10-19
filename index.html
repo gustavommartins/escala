@@ -8,65 +8,108 @@
     <script type="module" src="/src/main.ts" defer></script>
   </head>
   <body>
-    <button id="btn-settings" class="icon-btn" data-i18n-label="settings.title" aria-haspopup="dialog">⚙︎</button>
+    <div id="live" class="sr-only" role="status" aria-live="polite"></div>
+
+    <header class="toolbar">
+      <div class="toolbar-title">
+        <span data-i18n="app.title"></span>
+        <span id="toolbar-count" class="count" hidden></span>
+      </div>
+      <div class="toolbar-actions">
+        <button id="btn-add" class="btn-icon tint" data-icon="plus" data-i18n-label="queue.add" hidden></button>
+        <button id="btn-settings" class="btn-icon" data-icon="gear" data-i18n-label="settings.title" aria-haspopup="dialog"></button>
+      </div>
+    </header>
 
     <main id="app">
-      <!-- 1. Drop -->
+      <!-- 1. Estado vazio -->
       <section id="view-drop" class="view">
-        <div id="dropzone" class="dropzone">
-          <div class="dropzone-icon" aria-hidden="true">🎬</div>
+        <div id="dropzone" class="empty-state">
+          <span class="sym big-symbol" data-icon="film"></span>
           <h1 data-i18n="drop.title"></h1>
-          <p class="secondary" data-i18n="drop.or"></p>
-          <button id="btn-pick" class="btn btn-primary" data-i18n="drop.pick"></button>
+          <p class="secondary" data-i18n="drop.subtitle"></p>
+          <button id="btn-pick" class="btn btn-filled btn-large" data-i18n="drop.pick"></button>
         </div>
-        <p id="drop-error" class="error" hidden></p>
+        <p id="drop-error" class="error group-footer" role="alert" hidden></p>
       </section>
 
       <!-- 2. Fila -->
       <section id="view-queue" class="view" hidden>
-        <div class="queue-head">
-          <h2 data-i18n="options.convertTo"></h2>
-          <div id="global-options" class="chips" role="radiogroup"></div>
+        <div class="section-head">
+          <span class="group-header" data-i18n="options.convertTo"></span>
+          <div id="global-options" class="segmented" role="radiogroup"></div>
         </div>
-        <div id="queue-list" class="queue-list"></div>
-        <p id="queue-error" class="error" hidden></p>
-        <div id="overall" class="overall" hidden>
-          <div class="overall-row"><span class="secondary" data-i18n="queue.overall"></span><span id="overall-percent" class="secondary"></span></div>
-          <div class="progress"><div id="overall-bar" class="progress-bar"></div></div>
-        </div>
-        <p id="queue-summary" class="secondary summary" hidden></p>
-        <div class="actions">
-          <button id="btn-add" class="btn btn-secondary" data-i18n="queue.add"></button>
-          <button id="btn-convert-all" class="btn btn-primary" data-i18n="queue.convertAll" disabled></button>
-          <button id="btn-cancel-all" class="btn btn-secondary" data-i18n="queue.cancelAll" hidden></button>
-        </div>
+        <div id="queue-list" class="group"></div>
+        <p id="queue-error" class="group-footer error" role="alert" hidden></p>
+        <p id="queue-summary" class="group-footer" hidden></p>
       </section>
     </main>
 
-    <footer id="app-footer">
-      <span id="footer-version" class="secondary"></span>
-      <span id="update-status" class="secondary" hidden></span>
-      <button id="btn-update" class="link-btn" hidden></button>
+    <footer class="bottombar">
+      <div class="bottom-left">
+        <span id="footer-version"></span>
+        <span id="update-status" aria-live="polite" hidden></span>
+        <button id="btn-update" class="btn" hidden></button>
+      </div>
+      <div class="bottom-right">
+        <div id="overall" class="overall-compact" hidden>
+          <div class="progress" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-labelledby="overall-label">
+            <div id="overall-bar" class="progress-bar"></div>
+          </div>
+          <span id="overall-percent"></span>
+          <span id="overall-label" hidden data-i18n="queue.overall"></span>
+        </div>
+        <button id="btn-clear" class="btn" data-i18n="queue.clearDone" hidden></button>
+        <button id="btn-cancel-all" class="btn btn-destructive" data-i18n="queue.cancelAll" hidden></button>
+        <button id="btn-convert-all" class="btn btn-filled" data-i18n="queue.convertAll" disabled hidden></button>
+      </div>
     </footer>
 
-    <!-- Settings -->
-    <div id="settings" class="sheet-backdrop" hidden>
-      <div class="sheet card" role="dialog" aria-modal="true" aria-labelledby="settings-title">
-        <h1 id="settings-title" data-i18n="settings.title"></h1>
-        <label class="field">
-          <span data-i18n="settings.language"></span>
-          <select id="lang-select"></select>
-        </label>
-        <label class="field">
-          <span data-i18n="settings.parallel"></span>
-          <select id="parallel-select"></select>
-        </label>
-        <label class="check">
-          <input type="checkbox" id="hwaccel-check" />
-          <span data-i18n="settings.hwaccel"></span>
-        </label>
-        <div class="actions">
-          <button id="btn-settings-close" class="btn btn-primary" data-i18n="settings.close"></button>
+    <!-- Configurações -->
+    <div id="settings" class="backdrop" hidden>
+      <div class="sheet" role="dialog" aria-modal="true" aria-labelledby="settings-title">
+        <div class="sheet-head">
+          <h1 id="settings-title" data-i18n="settings.title"></h1>
+          <button id="btn-settings-close" class="btn" data-i18n="settings.done"></button>
+        </div>
+        <div class="sheet-body">
+          <span class="group-header" data-i18n="settings.section.general"></span>
+          <div class="group">
+            <label class="row">
+              <span class="row-label" data-i18n="settings.language"></span>
+              <select id="lang-select" class="popup"></select>
+            </label>
+          </div>
+
+          <span class="group-header" data-i18n="settings.section.performance"></span>
+          <div class="group">
+            <div class="row">
+              <span class="row-label" id="parallel-label" data-i18n="settings.parallel"></span>
+              <div id="parallel-seg" class="segmented" role="radiogroup" aria-labelledby="parallel-label"></div>
+            </div>
+          </div>
+          <p class="group-footer" data-i18n="settings.parallel.footer"></p>
+          <div class="group">
+            <label class="row">
+              <span class="row-label" data-i18n="settings.hwaccel"></span>
+              <input type="checkbox" id="hwaccel-check" class="switch" role="switch" />
+            </label>
+          </div>
+          <p class="group-footer" data-i18n="settings.hwaccel.footer"></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alerta de confirmação -->
+    <div id="alert" class="backdrop" hidden>
+      <div class="alert" role="alertdialog" aria-modal="true" aria-labelledby="alert-title" aria-describedby="alert-body">
+        <div class="alert-text">
+          <h2 id="alert-title" data-i18n="confirm.cancelAll.title"></h2>
+          <p id="alert-body" data-i18n="confirm.cancelAll.body"></p>
+        </div>
+        <div class="alert-actions">
+          <button id="alert-keep" class="btn" data-i18n="confirm.keep"></button>
+          <button id="alert-confirm" class="btn btn-destructive" data-i18n="queue.cancelAll"></button>
         </div>
       </div>
     </div>

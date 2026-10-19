@@ -15,6 +15,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::probe_video,
+            commands::thumbnail,
             commands::convert_video,
             commands::cancel_conversion,
             commands::cancel_all,

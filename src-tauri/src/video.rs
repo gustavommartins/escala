@@ -80,6 +80,24 @@ pub fn available_resolutions(info: &VideoInfo) -> Vec<Resolution> {
         .collect()
 }
 
+/// Filtro de vídeo: escala para `target` (lado menor) e, se HDR, tone-mapping para SDR.
+fn video_filter(info: &VideoInfo, target: u32) -> String {
+    // Mantém proporção; -2 garante dimensão par (exigência do H.264).
+    let scale = if info.width >= info.height {
+        format!("scale=-2:{target}:flags=lanczos")
+    } else {
+        format!("scale={target}:-2:flags=lanczos")
+    };
+    // HDR → SDR (BT.709) para não sair com cores lavadas.
+    if info.hdr {
+        format!(
+            "{scale},zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,             tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
+        )
+    } else {
+        scale
+    }
+}
+
 /// Argumentos do ffmpeg. `target` é o lado menor desejado.
 pub fn build_ffmpeg_args(
     input: &Path,
@@ -88,23 +106,12 @@ pub fn build_ffmpeg_args(
     info: &VideoInfo,
     opts: EncodeOpts,
 ) -> Vec<String> {
-    // Mantém proporção; -2 garante dimensão par (exigência do H.264).
-    let scale = if info.width >= info.height {
-        format!("scale=-2:{target}:flags=lanczos")
-    } else {
-        format!("scale={target}:-2:flags=lanczos")
-    };
-    // HDR → SDR (BT.709) para não sair com cores lavadas.
-    let filter = if info.hdr {
-        format!(
-            "{scale},zscale=t=linear:npl=100,format=gbrpf32le,zscale=p=bt709,             tonemap=hable:desat=0,zscale=t=bt709:m=bt709:r=tv,format=yuv420p"
-        )
-    } else {
-        scale
-    };
+    let filter = video_filter(info, target);
     let video_map = format!("0:v:{}", info.video_index);
 
-    let mut args: Vec<String> = ["-hide_banner", "-nostdin", "-y"].map(String::from).to_vec();
+    // Só arquivos locais: um "vídeo" que na verdade é uma playlist não pode puxar rede nem outros arquivos.
+    let mut args: Vec<String> =
+        ["-hide_banner", "-nostdin", "-y", "-protocol_whitelist", "file,pipe"].map(String::from).to_vec();
     // Opções de entrada (como -hwaccel) precisam vir antes do -i.
     if opts.hwaccel && hwaccel_supported(info.video_codec.as_deref()) {
         args.extend(["-hwaccel", "d3d11va"].map(String::from));
@@ -135,6 +142,31 @@ pub fn build_ffmpeg_args(
     );
     args.push(output.to_string_lossy().into_owned());
     args
+}
+
+/// Argumentos do ffmpeg para uma miniatura: um quadro JPEG (180p) escrito em stdout.
+/// Quadro em 10% da duração, no máximo 30 s.
+pub fn build_thumbnail_args(input: &Path, info: &VideoInfo) -> Vec<String> {
+    let t = if info.duration_s > 0.0 { (info.duration_s * 0.1).min(30.0) } else { 0.0 };
+    let ss = format!("{t:.2}");
+    let input_s = input.to_string_lossy().into_owned();
+    let video_map = format!("0:v:{}", info.video_index);
+    let filter = video_filter(info, 180);
+
+    [
+        "-hide_banner", "-nostdin", "-v", "error",
+        "-protocol_whitelist", "file,pipe",
+        "-ss", &ss,
+        "-i", &input_s,
+        "-map", &video_map,
+        "-frames:v", "1",
+        "-vf", &filter,
+        "-f", "image2pipe", "-c:v", "mjpeg", "-q:v", "4",
+        "pipe:1",
+    ]
+    .iter()
+    .map(|s| s.to_string())
+    .collect()
 }
 
 fn audio_is_copyable(codec: Option<&str>) -> bool {
@@ -488,6 +520,47 @@ mod tests {
         hdr.video_index = 1;
         let a = build_ffmpeg_args(Path::new("a.mkv"), Path::new("o.mp4"), 1080, &hdr, EncodeOpts::default()).join(" ");
         assert!(a.contains("-map 0:v:1") && a.contains("tonemap=hable"));
+    }
+
+    #[test]
+    fn thumbnail_seeks_before_input() {
+        let a = build_thumbnail_args(Path::new("in.mp4"), &info(1920, 1080, None));
+        let ss = a.iter().position(|x| x == "-ss").unwrap();
+        assert!(ss < a.iter().position(|x| x == "-i").unwrap());
+        assert_eq!(a[ss + 1], "1.00");
+    }
+
+    #[test]
+    fn thumbnail_zero_duration_seeks_zero() {
+        let mut i = info(1920, 1080, None);
+        i.duration_s = 0.0;
+        let a = build_thumbnail_args(Path::new("in.mp4"), &i);
+        let ss = a.iter().position(|x| x == "-ss").unwrap();
+        assert_eq!(a[ss + 1], "0.00");
+    }
+
+    #[test]
+    fn thumbnail_seek_capped_at_30s() {
+        let mut i = info(1920, 1080, None);
+        i.duration_s = 1000.0;
+        let a = build_thumbnail_args(Path::new("in.mp4"), &i);
+        let ss = a.iter().position(|x| x == "-ss").unwrap();
+        assert_eq!(a[ss + 1], "30.00");
+    }
+
+    #[test]
+    fn thumbnail_hdr_uses_tonemap() {
+        let mut i = info(3840, 2160, None);
+        i.hdr = true;
+        let a = build_thumbnail_args(Path::new("in.mkv"), &i).join(" ");
+        assert!(a.contains("tonemap"));
+    }
+
+    #[test]
+    fn thumbnail_outputs_jpeg_to_pipe() {
+        let a = build_thumbnail_args(Path::new("in.mp4"), &info(1920, 1080, None));
+        assert_eq!(a.last().unwrap(), "pipe:1");
+        assert!(a.join(" ").contains("-c:v mjpeg"));
     }
 
     #[test]

@@ -4,6 +4,7 @@ use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
+use base64::{engine::general_purpose::STANDARD, Engine};
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
 use tauri_plugin_shell::process::{CommandChild, CommandEvent};
@@ -83,7 +84,7 @@ pub async fn probe_video(app: AppHandle, path: String) -> Result<ProbeResult, St
         .shell()
         .sidecar("ffprobe")
         .map_err(|_| ERR_SIDECAR.to_string())?
-        .args(["-v", "error", "-print_format", "json", "-show_streams", "-show_format", &path])
+        .args(["-v", "error", "-protocol_whitelist", "file,pipe", "-print_format", "json", "-show_streams", "-show_format", &path])
         .output()
         .await
         .map_err(|_| ERR_SIDECAR.to_string())?;
@@ -251,6 +252,25 @@ async fn run_ffmpeg(
         eprintln!("ffmpeg falhou (hwaccel={hwaccel}): {stderr_tail}");
     }
     Ok(exit_ok)
+}
+
+/// Miniatura do vídeo como data URL JPEG (quadro em 10% da duração).
+#[tauri::command]
+pub async fn thumbnail(app: AppHandle, path: String, info: VideoInfo) -> Result<String, String> {
+    let args = video::build_thumbnail_args(Path::new(&path), &info);
+    let output = app
+        .shell()
+        .sidecar("ffmpeg")
+        .map_err(|_| ERR_SIDECAR.to_string())?
+        .args(args)
+        .output()
+        .await
+        .map_err(|_| ERR_SIDECAR.to_string())?;
+
+    if !output.status.success() || output.stdout.is_empty() {
+        return Err("err_thumbnail".into());
+    }
+    Ok(format!("data:image/jpeg;base64,{}", STANDARD.encode(&output.stdout)))
 }
 
 #[tauri::command]
