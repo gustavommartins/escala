@@ -36,7 +36,7 @@ struct Progress {
     percent: f64,
 }
 
-const ERR_SIDECAR: &str = "Não consegui iniciar o conversor embutido. Reinstale o app.";
+const ERR_SIDECAR: &str = "err_sidecar";
 
 #[tauri::command]
 pub async fn probe_video(app: AppHandle, path: String) -> Result<ProbeResult, String> {
@@ -50,7 +50,7 @@ pub async fn probe_video(app: AppHandle, path: String) -> Result<ProbeResult, St
         .map_err(|_| ERR_SIDECAR.to_string())?;
 
     if !output.status.success() {
-        return Err("Este arquivo não parece ser um vídeo válido.".into());
+        return Err("err_not_video".into());
     }
 
     let info = video::parse_ffprobe_json(&String::from_utf8_lossy(&output.stdout))?;
@@ -72,7 +72,7 @@ pub async fn convert_video(
 ) -> Result<ConvertResult, String> {
     // Reserva atômica: só uma conversão por vez, inclusive durante o probe.
     if state.busy.swap(true, Ordering::SeqCst) {
-        return Err("Já existe uma conversão em andamento.".into());
+        return Err("err_busy".into());
     }
     state.cancel_requested.store(false, Ordering::SeqCst);
     let result = run_conversion(&app, &state, path, height).await;
@@ -89,10 +89,10 @@ async fn run_conversion(
     let input = PathBuf::from(&path);
     let probe = probe_video(app.clone(), path).await?;
     if state.cancel_requested.load(Ordering::SeqCst) {
-        return Err("cancelado".into());
+        return Err("cancelled".into());
     }
     if !probe.resolutions.iter().any(|r| r.height == height) {
-        return Err("Essa resolução não está disponível para este vídeo.".into());
+        return Err("err_res_unavailable".into());
     }
 
     let output = video::output_path(&input, height);
@@ -148,12 +148,12 @@ async fn run_conversion(
 
     if cancelled {
         let _ = std::fs::remove_file(&output);
-        return Err("cancelado".into());
+        return Err("cancelled".into());
     }
     if !exit_ok {
         let _ = std::fs::remove_file(&output);
         eprintln!("ffmpeg falhou: {stderr_tail}");
-        return Err("A conversão falhou. O arquivo pode estar corrompido ou protegido.".into());
+        return Err("err_failed".into());
     }
 
     let output_size = std::fs::metadata(&output).map(|m| m.len()).unwrap_or(0);

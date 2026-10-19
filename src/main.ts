@@ -8,6 +8,16 @@ import {
   probeVideo,
   type ProbeResult,
 } from "./api";
+import {
+  LANGUAGES,
+  applyTranslations,
+  errorMessage,
+  getLang,
+  loadLang,
+  setLang,
+  t,
+  type Lang,
+} from "./i18n";
 
 const VIDEO_EXTENSIONS = ["mp4", "mov", "mkv", "avi", "webm", "m4v"];
 
@@ -50,20 +60,18 @@ async function loadFile(path: string) {
   if (busy) return;
   const ext = path.split(".").pop()?.toLowerCase() ?? "";
   if (!VIDEO_EXTENSIONS.includes(ext)) {
-    showDropError("Escolha um arquivo de vídeo (MP4, MOV, MKV, AVI, WEBM ou M4V).");
+    showDropError(t("error.badExtension"));
     return;
   }
   showDropError("");
   try {
     probe = await probeVideo(path);
   } catch (e) {
-    showDropError(String(e));
+    showDropError(errorMessage(e));
     return;
   }
   if (probe.resolutions.length === 0) {
-    showDropError(
-      `Este vídeo já tem ${Math.min(probe.info.width, probe.info.height)}p — não há uma resolução menor para converter.`,
-    );
+    showDropError(t("error.alreadySmall", { height: Math.min(probe.info.width, probe.info.height) }));
     return;
   }
   currentPath = path;
@@ -79,19 +87,21 @@ function renderOptions(p: ProbeResult) {
   const list = $("options");
   list.replaceChildren();
   const preselect = p.resolutions.find((r) => r.recommended) ?? p.resolutions[0];
-  selectedHeight = null;
+  const keep = p.resolutions.find((r) => r.height === selectedHeight);
 
   for (const r of p.resolutions) {
     const btn = document.createElement("button");
     btn.className = "option";
     btn.setAttribute("role", "radio");
     btn.dataset.height = String(r.height);
-    btn.innerHTML = `<span></span>${r.recommended ? '<span class="badge">Recomendado</span>' : ""}`;
+    btn.innerHTML = `<span></span>${r.recommended ? '<span class="badge"></span>' : ""}`;
     btn.firstElementChild!.textContent = r.label;
+    const badge = btn.querySelector(".badge");
+    if (badge) badge.textContent = t("options.recommended");
     btn.addEventListener("click", () => select(r.height));
     list.append(btn);
   }
-  select(preselect.height);
+  select((keep ?? preselect).height);
 }
 
 function select(height: number) {
@@ -112,15 +122,17 @@ async function startConversion() {
   try {
     const result = await convertVideo(currentPath, selectedHeight);
     outputPath = result.output;
-    $("done-info").textContent =
-      `Novo arquivo: ${formatSize(result.output_size)} (original: ${formatSize(probe.info.size_bytes)})`;
+    $("done-info").textContent = t("done.info", {
+      size: formatSize(result.output_size),
+      original: formatSize(probe.info.size_bytes),
+    });
     show("done");
   } catch (e) {
-    if (String(e) === "cancelado") {
+    if (String(e) === "cancelled") {
       show("options");
     } else {
       reset();
-      showDropError(String(e));
+      showDropError(errorMessage(e));
     }
   } finally {
     busy = false;
@@ -143,12 +155,43 @@ function reset() {
 async function pickFile() {
   const selected = await open({
     multiple: false,
-    filters: [{ name: "Vídeos", extensions: VIDEO_EXTENSIONS }],
+    filters: [{ name: t("filter.name"), extensions: VIDEO_EXTENSIONS }],
   });
   if (typeof selected === "string") await loadFile(selected);
 }
 
+function initSettings() {
+  const sheet = $("settings");
+  const select = $<HTMLSelectElement>("lang-select");
+  for (const l of LANGUAGES) select.add(new Option(l.name, l.code));
+  select.value = getLang();
+
+  const close = () => {
+    sheet.hidden = true;
+  };
+  $("btn-settings").addEventListener("click", () => {
+    sheet.hidden = false;
+    select.focus();
+  });
+  $("btn-settings-close").addEventListener("click", close);
+  sheet.addEventListener("click", (e) => {
+    if (e.target === sheet) close();
+  });
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") close();
+  });
+  select.addEventListener("change", () => {
+    setLang(select.value as Lang);
+    applyTranslations();
+    if (probe && !$("view-options").hidden) renderOptions(probe);
+    showDropError("");
+  });
+}
+
 async function init() {
+  loadLang();
+  applyTranslations();
+  initSettings();
   $("btn-pick").addEventListener("click", pickFile);
   $("btn-back").addEventListener("click", reset);
   $("btn-convert").addEventListener("click", startConversion);

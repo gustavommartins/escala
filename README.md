@@ -1,45 +1,55 @@
 # Escala
 
-Converte vídeos para uma resolução menor (por exemplo, 4K → 1080p) sem perda visível de qualidade.
-Arraste o vídeo, escolha a resolução e pronto — sem ajustes de codec.
+**English** · [Português](README.pt-BR.md) · [Español](README.es.md)
 
-Feito com **Rust + Tauri 2** e **FFmpeg** embutido.
+Converts videos to a lower resolution (for example, 4K → 1080p) with no visible quality loss.
+Drag in a video, pick a resolution, done — no codec settings to worry about.
 
-## Como usar
+Built with **Rust + Tauri 2** and a bundled **FFmpeg**.
 
-1. Abra o app e arraste um vídeo (ou clique em **Escolher arquivo…**).
-2. Escolha a resolução (só aparecem opções menores que a do vídeo; 1080p vem pré-selecionada).
-3. Clique em **Converter**. O novo arquivo é salvo na mesma pasta, como `nome_1080p.mp4`.
-   O original nunca é alterado.
+## How to use
 
-## Desenvolvimento
+1. Open the app and drag a video onto it (or click **Choose file…**).
+2. Pick a resolution (only options smaller than the video's are shown; 1080p is preselected).
+3. Click **Convert**. The new file is saved next to the original as `name_1080p.mp4`.
+   The original is never modified.
 
-Requisitos: [Rust](https://rustup.rs), Node.js 20+ e as dependências do Tauri para Windows (WebView2, Build Tools do MSVC).
+**Language:** the app follows your system language (English, Português or Español; English otherwise).
+You can change it any time with the ⚙︎ button in the top-right corner.
+
+## Download
+
+Get the Windows installer from the [Releases](../../releases) page. FFmpeg is included.
+
+## Development
+
+Requirements: [Rust](https://rustup.rs), Node.js 20+ and the Tauri prerequisites for Windows (WebView2, MSVC Build Tools).
 
 ```bash
 npm install
-npm run fetch-ffmpeg   # baixa o FFmpeg para src-tauri/binaries (uma vez só)
-npm run tauri dev      # abre o app em modo desenvolvimento
-npm run tauri build    # gera o instalador (FFmpeg incluído)
-cd src-tauri && cargo test   # testes da lógica de conversão
+npm run fetch-ffmpeg   # downloads FFmpeg into src-tauri/binaries (once)
+npm run tauri dev      # runs the app in development mode
+npm run tauri build    # builds the installer (FFmpeg included)
+cd src-tauri && cargo test   # tests for the conversion logic
 ```
 
-## Onde mexer
+## Where to change things
 
-| O quê | Onde |
+| What | Where |
 |---|---|
-| Qualidade (CRF), velocidade (preset), áudio, lista de resoluções | `src-tauri/src/video.rs` (constantes no topo) |
-| Comandos que o front chama (analisar, converter, cancelar) | `src-tauri/src/commands.rs` |
-| Telas e fluxo | `index.html`, `src/main.ts` |
-| Visual (cores, espaçamentos, modo escuro) | `src/styles.css` |
+| Quality (CRF), speed (preset), audio, resolution list | `src-tauri/src/video.rs` (constants at the top) |
+| Commands the front end calls (probe, convert, cancel) | `src-tauri/src/commands.rs` |
+| Screens and flow | `index.html`, `src/main.ts` |
+| Translations (add a language here) | `src/i18n.ts` |
+| Look and feel (colors, spacing, dark mode) | `src/styles.css` |
 
-### Configuração de qualidade padrão
+### Default quality settings
 
-- Vídeo: H.264 (`libx264`), `-crf 18` (visualmente sem perdas), `-preset slow`, redimensionamento Lanczos, proporção preservada.
-- Áudio: copiado sem recompressão quando for AAC/MP3; senão AAC 192 kbps.
-- Saída: MP4 com `faststart`, compatível com praticamente qualquer player.
+- Video: H.264 (`libx264`), `-crf 18` (visually lossless), `-preset medium`, Lanczos scaling, aspect ratio preserved. HDR sources are tone-mapped to SDR.
+- Audio: copied as-is when it is AAC/MP3; otherwise AAC 192 kbps.
+- Output: MP4 with `faststart`, playable almost anywhere.
 
-## Licença do FFmpeg
+## FFmpeg license
 
-O app usa o build GPL do FFmpeg (necessário para o encoder x264), baixado de
-[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds). Se distribuir o app, respeite a licença GPL.
+The app uses the GPL build of FFmpeg (required for the x264 encoder), downloaded from
+[BtbN/FFmpeg-Builds](https://github.com/BtbN/FFmpeg-Builds). If you distribute the app, comply with the GPL.

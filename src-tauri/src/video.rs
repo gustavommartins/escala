@@ -197,7 +197,7 @@ struct ProbeFormat {
 /// Lê o JSON do `ffprobe -print_format json -show_streams -show_format`.
 pub fn parse_ffprobe_json(json: &str) -> Result<VideoInfo, String> {
     let out: ProbeOutput =
-        serde_json::from_str(json).map_err(|_| "Não consegui ler as informações do vídeo.".to_string())?;
+        serde_json::from_str(json).map_err(|_| "err_unreadable".to_string())?;
 
     let video = out
         .streams
@@ -207,7 +207,7 @@ pub fn parse_ffprobe_json(json: &str) -> Result<VideoInfo, String> {
                 && s.width.is_some()
                 && s.disposition.get("attached_pic").copied().unwrap_or(0) == 0
         })
-        .ok_or("Este arquivo não parece conter vídeo.")?;
+        .ok_or("err_no_video_stream")?;
 
     let (mut width, mut height) = (video.width.unwrap_or(0), video.height.unwrap_or(0));
 
